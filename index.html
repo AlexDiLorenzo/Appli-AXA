@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AXA → PowerPanne | Montpellier Dépannage</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green-dark:  #1e4d1a;
+      --green:       #2a6b24;
+      --green-light: #e8f5e3;
+      --yellow:      #e8b800;
+      --yellow-soft: #fdf6d8;
+      --text:        #1a1a1a;
+      --text-muted:  #5c6b5a;
+      --border:      #c8d9c5;
+      --surface:     #ffffff;
+      --bg:          #f2f5f1;
+      --radius:      14px;
+      --axa-blue:    #00008f;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 36px 20px 48px;
+    }
+
+    /* ── Header ── */
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .logo-wrap {
+      display: inline-block;
+      background: var(--green-dark);
+      border-radius: 50%;
+      padding: 6px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 20px rgba(30,77,26,.30);
+    }
+
+    .logo-wrap img {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      display: block;
+      object-fit: cover;
+    }
+
+    .company {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-bottom: 6px;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--green-dark);
+      margin-bottom: 6px;
+    }
+
+    h1 span { color: var(--yellow); -webkit-text-stroke: 0.5px #b08800; }
+
+    .tagline {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 32px;
+      width: 100%;
+      max-width: 680px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 6px 32px rgba(30,77,26,.08);
+      border: 1px solid rgba(30,77,26,.08);
+    }
+
+    /* ── Textarea ── */
+    .field-label {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    #email-input {
+      width: 100%;
+      height: 220px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      color: var(--text);
+      background: var(--bg);
+      resize: vertical;
+      transition: border-color .15s;
+      outline: none;
+    }
+
+    #email-input:focus { border-color: var(--green); }
+    #email-input::placeholder { color: #9cac98; }
+
+    /* ── Preview ── */
+    .preview {
+      margin-top: 16px;
+      background: var(--green-light);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      display: none;
+    }
+
+    .preview.show { display: block; }
+
+    .preview-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--green);
+      margin-bottom: 12px;
+    }
+
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+    }
+
+    .preview-field label {
+      display: block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 3px;
+    }
+
+    .preview-field span {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--green-dark);
+    }
+
+    .preview-warning {
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: var(--yellow-soft);
+      border: 1px solid #e8d070;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      color: #7a6000;
+    }
+
+    /* ── Button ── */
+    #gen-btn {
+      margin-top: 20px;
+      width: 100%;
+      padding: 14px;
+      background: var(--green-dark);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, transform .1s, opacity .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    #gen-btn:hover:not(:disabled) { background: var(--green); }
+    #gen-btn:active:not(:disabled) { transform: scale(0.99); }
+    #gen-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    #gen-btn svg { width: 18px; height: 18px; }
+
+    /* ── Status ── */
+    #status {
+      margin-top: 14px;
+      border-radius: 10px;
+      padding: 12px 15px;
+      font-size: 0.875rem;
+      display: none;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #status.show { display: flex; }
+    #status.success { background: #e8f5e3; color: #15803d; }
+    #status.error   { background: #fef2f2; color: #b91c1c; }
+
+    #status svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 20px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="logo-wrap">
+      <img src="logo.jpg" alt="Montpellier Dépannage" />
+    </div>
+    <p class="company">Montpellier Dépannage</p>
+    <h1>AXA <span>→ PowerPanne</span></h1>
+    <p class="tagline">Collez le contenu du mail AXA, générez le PDF en un clic</p>
+  </div>
+
+  <div class="card">
+    <label class="field-label" for="email-input">Contenu du mail AXA</label>
+    <textarea id="email-input" placeholder="Collez ici le texte complet du mail de règlement AXA…"></textarea>
+
+    <div class="preview" id="preview">
+      <p class="preview-title">Données détectées</p>
+      <div class="preview-grid">
+        <div class="preview-field"><label>Règlement n°</label><span id="f-ref">—</span></div>
+        <div class="preview-field"><label>Date de paiement</label><span id="f-date">—</span></div>
+        <div class="preview-field"><label>Montant total</label><span id="f-total">—</span></div>
+        <div class="preview-field"><label>Nb de factures</label><span id="f-count">—</span></div>
+      </div>
+      <div class="preview-warning" id="warn-client" style="display:none">
+        &#9888;&#65039; Le mail AXA ne contient pas le Nom du Client — cette colonne ne sera pas présente dans le PDF.
+      </div>
+    </div>
+
+    <button id="gen-btn" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 10v6m0 0-3-3m3 3 3-3M3 15v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"/>
+        <path d="M7 4h10l3 6H4L7 4Z"/>
+      </svg>
+      Générer le PDF
+    </button>
+
+    <div id="status"></div>
+  </div>
+
+  <footer>Traitement 100 % local — aucune donnée envoyée sur internet</footer>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// PARSER
+// ─────────────────────────────────────────────────────────────────────────────
+
+function parseAXAEmail(raw) {
+  const lines    = raw.split('\n').map(l => l.trim());
+  const nonEmpty = lines.filter(l => l !== '');
+
+  const find = (re) => {
+    for (const l of nonEmpty) {
+      const m = l.match(re);
+      if (m) return m[1].trim();
+    }
+    return '';
+  };
+
+  const totalAmount = find(/Montant Total[^:]*:\s*(.+)/i);
+  const paymentDate = find(/Date de paiement[^:]*:\s*(.+)/i);
+  const paymentRef  = find(/Reference de paiement[^:/]*[:/]\s*(.+)/i);
+  const bankAccount = find(/Votre compte bancaire[^:]*:\s*(.+)/i);
+  const payCycle    = find(/Cycle de paiement[^:]*:\s*(.+)/i);
+
+  // Invoice data starts after the last column-header line
+  const headerEndIdx = nonEmpty.findLastIndex(l => /Montant de la facture/i.test(l));
+  const dataLines = headerEndIdx >= 0 ? nonEmpty.slice(headerEndIdx + 1) : [];
+
+  const invoices = [];
+  let i = 0;
+  while (i < dataLines.length) {
+    const date = dataLines[i];
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) { i++; continue; }
+
+    const dossier   = (dataLines[i + 1] || '').trim();
+    const votreFact = (dataLines[i + 2] || '').trim();
+    const notreFact = (dataLines[i + 3] || '').trim();
+    const currency  = (dataLines[i + 4] || '').trim();
+    const montant   = (dataLines[i + 5] || '').trim();
+
+    if (currency === 'EUR') {
+      invoices.push({ date, dossier, votreFact, notreFact, montant });
+      i += 6;
+    } else {
+      i++;
+    }
+  }
+
+  return { totalAmount, paymentDate, paymentRef, bankAccount, payCycle, invoices };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PDF GENERATOR
+// ─────────────────────────────────────────────────────────────────────────────
+
+function generatePDF(data) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  const W = 210, margin = 15;
+  const AXA_BLUE  = [0, 0, 143];
+  const AXA_RED   = [255, 30, 30];
+  const DARK      = [30, 30, 30];
+  const LIGHT_BG  = [245, 247, 253];
+  const BORDER    = [200, 210, 230];
+
+  // ── Helper ──────────────────────────────────────────────────────────────
+  function header(doc) {
+    // Box
+    doc.setFillColor(...LIGHT_BG);
+    doc.setDrawColor(...BORDER);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(margin, 10, 85, 28, 2, 2, 'FD');
+
+    // "AXA" logo text
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(...AXA_BLUE);
+    doc.text('AXA', margin + 5, 22);
+
+    // Red bar under AXA
+    doc.setFillColor(...AXA_RED);
+    doc.rect(margin + 5, 23.5, 14, 1.2, 'F');
+
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...DARK);
+    doc.text('Partners — Département Règlements Prestataires', margin + 5, 28.5);
+    doc.text('Service Indemnisation', margin + 5, 33);
+  }
+
+  // ── PAGE 1 : Lettre de règlement ─────────────────────────────────────────
+  header(doc);
+
+  // Recipient
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(...DARK);
+  doc.text('MONTPELLIER DEPANNAGE SARL', W - margin, 46, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('154 IMPASSE DU CAMPAILLOU', W - margin, 52, { align: 'right' });
+  doc.text(' ', W - margin, 58, { align: 'right' });
+  doc.text('34400 VILLETELLE', W - margin, 64, { align: 'right' });
+
+  // "Nos Références" — underlined
+  doc.setFontSize(8.5);
+  doc.setTextColor(...DARK);
+  doc.text('Nos Références à rappeler', margin, 76);
+  doc.text('dans toute correspondance :', margin, 81);
+  doc.setLineWidth(0.25);
+  doc.setDrawColor(...DARK);
+  doc.line(margin, 77, margin + 52, 77);
+  doc.line(margin, 82, margin + 56, 82);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text(`Règlement n° ${data.paymentRef}`, margin, 89);
+
+  // Date
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`le ${data.paymentDate}`, W - margin, 89, { align: 'right' });
+
+  // Salutation
+  doc.setFontSize(9.5);
+  doc.text('Madame, Monsieur,', margin, 104);
+
+  // Body
+  doc.setFontSize(9);
+  const montantFmt = data.totalAmount;
+  const bodyLines = [
+    `Nous vous informons que nous demandons ce jour à notre banque le virement`,
+    `en votre faveur de la somme de :`,
+    '',
+    `Références bancaires : ${data.bankAccount}`,
+    `Correspondant aux prestations dont détail ci-joint.`,
+    '',
+    'Consultez le détail des prestations réglées sur le bordereau ci-joint.',
+    '',
+    `Veuillez agréer, Madame, Monsieur, l'expression de nos sincères salutations.`,
+  ];
+
+  let y = 114;
+  for (const line of bodyLines) {
+    if (line === '') { y += 3; continue; }
+    doc.text(line, margin, y);
+    y += 5.5;
+  }
+
+  // Montant (bold, larger, on its own line)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(`${montantFmt} EUR`, margin + 6, 126);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+
+  // ── PAGE 2 : Bordereau ───────────────────────────────────────────────────
+  doc.addPage();
+  header(doc);
+
+  // "AXA" large label (like "FID" in Fidelia)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.setTextColor(...AXA_BLUE);
+  doc.text('AXA', margin, 56);
+
+  // Red underline
+  doc.setFillColor(...AXA_RED);
+  doc.rect(margin, 58, 18, 1.5, 'F');
+
+  // Bordereau title (center)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(...DARK);
+  doc.text('BORDEREAU DE RÈGLEMENT', W / 2, 50, { align: 'center' });
+  doc.text('PAR VIREMENT BANCAIRE', W / 2, 56, { align: 'center' });
+
+  // Date (left)
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`Le ${data.paymentDate}`, margin, 64);
+
+  // Nos Refs
+  doc.setFontSize(9);
+  doc.text('Nos Refs : ', margin, 72);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Règlement ${data.paymentRef}`, margin + 20, 72);
+  doc.setFont('helvetica', 'normal');
+
+  // Table
+  const tableRows = data.invoices.map(inv => [
+    inv.dossier,
+    inv.votreFact || '—',
+    inv.notreFact || '—',
+    { content: inv.montant, styles: { halign: 'right' } },
+  ]);
+
+  doc.autoTable({
+    startY: 77,
+    head: [[
+      { content: 'Dossier n°',  styles: { halign: 'left'  } },
+      { content: 'N° Facture',  styles: { halign: 'left'  } },
+      { content: 'Voucher ID',  styles: { halign: 'left'  } },
+      { content: 'Montant en Euro', styles: { halign: 'right' } },
+    ]],
+    body: tableRows,
+    foot: [[
+      { content: '', colSpan: 2 },
+      { content: 'Montant total du virement', styles: { fontStyle: 'bold', halign: 'right' } },
+      { content: data.totalAmount, styles: { fontStyle: 'bold', halign: 'right' } },
+    ]],
+    headStyles: {
+      fillColor: AXA_BLUE,
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8.5,
+    },
+    bodyStyles: {
+      fontSize: 8,
+      textColor: DARK,
+    },
+    footStyles: {
+      fillColor: [240, 242, 248],
+      textColor: DARK,
+      fontSize: 8.5,
+    },
+    alternateRowStyles: { fillColor: [250, 251, 255] },
+    columnStyles: {
+      0: { cellWidth: 38 },
+      1: { cellWidth: 38 },
+      2: { cellWidth: 38 },
+      3: { cellWidth: 'auto', halign: 'right' },
+    },
+    margin: { left: margin, right: margin },
+    tableLineColor: BORDER,
+    tableLineWidth: 0.2,
+  });
+
+  return doc;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI LOGIC
+// ─────────────────────────────────────────────────────────────────────────────
+
+const emailInput = document.getElementById('email-input');
+const genBtn     = document.getElementById('gen-btn');
+const preview    = document.getElementById('preview');
+const status     = document.getElementById('status');
+
+let parsedData = null;
+
+emailInput.addEventListener('input', () => {
+  const raw = emailInput.value.trim();
+  status.className = '';
+  status.style.display = 'none';
+
+  if (!raw) {
+    preview.classList.remove('show');
+    genBtn.disabled = true;
+    parsedData = null;
+    return;
+  }
+
+  parsedData = parseAXAEmail(raw);
+
+  if (parsedData.invoices.length === 0 || !parsedData.paymentRef) {
+    preview.classList.remove('show');
+    genBtn.disabled = true;
+    return;
+  }
+
+  document.getElementById('f-ref').textContent   = parsedData.paymentRef  || '—';
+  document.getElementById('f-date').textContent  = parsedData.paymentDate || '—';
+  document.getElementById('f-total').textContent = parsedData.totalAmount  ? parsedData.totalAmount + ' €' : '—';
+  document.getElementById('f-count').textContent = parsedData.invoices.length + ' facture(s)';
+  document.getElementById('warn-client').style.display = 'block';
+
+  preview.classList.add('show');
+  genBtn.disabled = false;
+});
+
+genBtn.addEventListener('click', () => {
+  if (!parsedData) return;
+
+  try {
+    const doc = generatePDF(parsedData);
+    const filename = `AXA_Reglement_${parsedData.paymentRef || 'export'}_${parsedData.paymentDate.replace(/\//g, '-')}.pdf`;
+    doc.save(filename);
+
+    status.className = 'show success';
+    status.innerHTML = `
+      <svg viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd"/>
+      </svg>
+      <span>PDF généré avec succès — <strong>${filename}</strong></span>
+    `;
+  } catch (err) {
+    status.className = 'show error';
+    status.innerHTML = `
+      <svg viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 10 5Zm0 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"/>
+      </svg>
+      <span>Erreur : ${err.message}</span>
+    `;
+  }
+});
+</script>
+</body>
+</html>
