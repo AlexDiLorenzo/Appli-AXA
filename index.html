@@ -329,7 +329,7 @@ function generateCSV(data) {
 
   const rows = data.invoices.map(inv => [
     inv.votreFact,
-    data.paymentRef,
+    inv.dossier,
     data.paymentDate,
     inv.montant,
   ]);
