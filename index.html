@@ -3,9 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AXA → PowerPanne | Montpellier Dépannage</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <title>AXA → CSV Virement | Montpellier Dépannage</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -169,16 +167,6 @@
       color: var(--green-dark);
     }
 
-    .preview-warning {
-      margin-top: 10px;
-      padding: 8px 12px;
-      background: var(--yellow-soft);
-      border: 1px solid #e8d070;
-      border-radius: 6px;
-      font-size: 0.78rem;
-      color: #7a6000;
-    }
-
     /* ── Button ── */
     #gen-btn {
       margin-top: 20px;
@@ -238,8 +226,8 @@
       <img src="logo.jpg" alt="Montpellier Dépannage" />
     </div>
     <p class="company">Montpellier Dépannage</p>
-    <h1>AXA <span>→ PowerPanne</span></h1>
-    <p class="tagline">Collez le contenu du mail AXA, générez le PDF en un clic</p>
+    <h1>AXA <span>→ CSV Virement</span></h1>
+    <p class="tagline">Collez le contenu du mail AXA, générez le CSV en un clic</p>
   </div>
 
   <div class="card">
@@ -254,9 +242,6 @@
         <div class="preview-field"><label>Montant total</label><span id="f-total">—</span></div>
         <div class="preview-field"><label>Nb de factures</label><span id="f-count">—</span></div>
       </div>
-      <div class="preview-warning" id="warn-client" style="display:none">
-        &#9888;&#65039; Le mail AXA ne contient pas le Nom du Client — cette colonne ne sera pas présente dans le PDF.
-      </div>
     </div>
 
     <button id="gen-btn" disabled>
@@ -264,7 +249,7 @@
         <path d="M12 10v6m0 0-3-3m3 3 3-3M3 15v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"/>
         <path d="M7 4h10l3 6H4L7 4Z"/>
       </svg>
-      Générer le PDF
+      Générer le CSV
     </button>
 
     <div id="status"></div>
@@ -291,7 +276,7 @@ function parseAXAEmail(raw) {
 
   const totalAmount = find(/Montant Total[^:]*:\s*(.+)/i);
   const paymentDate = find(/Date de paiement[^:]*:\s*(.+)/i);
-  const paymentRef  = find(/Reference de paiement[^:/]*[:/]\s*(.+)/i);
+  const paymentRef  = find(/Reference de paiement[^:]*:\s*(.+)/i);
   const bankAccount = find(/Votre compte bancaire[^:]*:\s*(.+)/i);
   const payCycle    = find(/Cycle de paiement[^:]*:\s*(.+)/i);
 
@@ -323,194 +308,34 @@ function parseAXAEmail(raw) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PDF GENERATOR
+// CSV GENERATOR
 // ─────────────────────────────────────────────────────────────────────────────
+// Format: French Excel — separator ';', decimal ',', UTF-8 with BOM.
+// Columns match the AXA template "exemple_virement_generique" :
+//   Numéro de facture | Référence UNIQUE de paiement | Date du paiement | Montant versé TTC
 
-function generatePDF(data) {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+const CSV_SEP = ';';
 
-  const W = 210, margin = 15;
-  const AXA_BLUE  = [0, 0, 143];
-  const AXA_RED   = [255, 30, 30];
-  const DARK      = [30, 30, 30];
-  const LIGHT_BG  = [245, 247, 253];
-  const BORDER    = [200, 210, 230];
-
-  // ── Helper ──────────────────────────────────────────────────────────────
-  function header(doc) {
-    // Box
-    doc.setFillColor(...LIGHT_BG);
-    doc.setDrawColor(...BORDER);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(margin, 10, 85, 28, 2, 2, 'FD');
-
-    // "AXA" logo text
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.setTextColor(...AXA_BLUE);
-    doc.text('AXA', margin + 5, 22);
-
-    // Red bar under AXA
-    doc.setFillColor(...AXA_RED);
-    doc.rect(margin + 5, 23.5, 14, 1.2, 'F');
-
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...DARK);
-    doc.text('Partners — Département Règlements Prestataires', margin + 5, 28.5);
-    doc.text('Service Indemnisation', margin + 5, 33);
+function csvEscape(value) {
+  const s = String(value ?? '');
+  if (s.includes(CSV_SEP) || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+    return '"' + s.replace(/"/g, '""') + '"';
   }
+  return s;
+}
 
-  // ── PAGE 1 : Lettre de règlement ─────────────────────────────────────────
-  header(doc);
+function generateCSV(data) {
+  const header = ['Numéro de facture', 'Référence UNIQUE de paiement', 'Date du paiement', 'Montant versé TTC'];
 
-  // Recipient
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(...DARK);
-  doc.text('MONTPELLIER DEPANNAGE SARL', W - margin, 46, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text('154 IMPASSE DU CAMPAILLOU', W - margin, 52, { align: 'right' });
-  doc.text(' ', W - margin, 58, { align: 'right' });
-  doc.text('34400 VILLETELLE', W - margin, 64, { align: 'right' });
-
-  // "Nos Références" — underlined
-  doc.setFontSize(8.5);
-  doc.setTextColor(...DARK);
-  doc.text('Nos Références à rappeler', margin, 76);
-  doc.text('dans toute correspondance :', margin, 81);
-  doc.setLineWidth(0.25);
-  doc.setDrawColor(...DARK);
-  doc.line(margin, 77, margin + 52, 77);
-  doc.line(margin, 82, margin + 56, 82);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text(`Règlement n° ${data.paymentRef}`, margin, 89);
-
-  // Date
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`le ${data.paymentDate}`, W - margin, 89, { align: 'right' });
-
-  // Salutation
-  doc.setFontSize(9.5);
-  doc.text('Madame, Monsieur,', margin, 104);
-
-  // Body
-  doc.setFontSize(9);
-  const montantFmt = data.totalAmount;
-  const bodyLines = [
-    `Nous vous informons que nous demandons ce jour à notre banque le virement`,
-    `en votre faveur de la somme de :`,
-    '',
-    `Références bancaires : ${data.bankAccount}`,
-    `Correspondant aux prestations dont détail ci-joint.`,
-    '',
-    'Consultez le détail des prestations réglées sur le bordereau ci-joint.',
-    '',
-    `Veuillez agréer, Madame, Monsieur, l'expression de nos sincères salutations.`,
-  ];
-
-  let y = 114;
-  for (const line of bodyLines) {
-    if (line === '') { y += 3; continue; }
-    doc.text(line, margin, y);
-    y += 5.5;
-  }
-
-  // Montant (bold, larger, on its own line)
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text(`${montantFmt} EUR`, margin + 6, 126);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-
-  // ── PAGE 2 : Bordereau ───────────────────────────────────────────────────
-  doc.addPage();
-  header(doc);
-
-  // "AXA" large label (like "FID" in Fidelia)
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.setTextColor(...AXA_BLUE);
-  doc.text('AXA', margin, 56);
-
-  // Red underline
-  doc.setFillColor(...AXA_RED);
-  doc.rect(margin, 58, 18, 1.5, 'F');
-
-  // Bordereau title (center)
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
-  doc.setTextColor(...DARK);
-  doc.text('BORDEREAU DE RÈGLEMENT', W / 2, 50, { align: 'center' });
-  doc.text('PAR VIREMENT BANCAIRE', W / 2, 56, { align: 'center' });
-
-  // Date (left)
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`Le ${data.paymentDate}`, margin, 64);
-
-  // Nos Refs
-  doc.setFontSize(9);
-  doc.text('Nos Refs : ', margin, 72);
-  doc.setFont('helvetica', 'bold');
-  doc.text(`Règlement ${data.paymentRef}`, margin + 20, 72);
-  doc.setFont('helvetica', 'normal');
-
-  // Table
-  const tableRows = data.invoices.map(inv => [
-    inv.dossier,
-    inv.votreFact || '—',
-    inv.notreFact || '—',
-    { content: inv.montant, styles: { halign: 'right' } },
+  const rows = data.invoices.map(inv => [
+    inv.votreFact,
+    data.paymentRef,
+    data.paymentDate,
+    inv.montant,
   ]);
 
-  doc.autoTable({
-    startY: 77,
-    head: [[
-      { content: 'Dossier n°',  styles: { halign: 'left'  } },
-      { content: 'N° Facture',  styles: { halign: 'left'  } },
-      { content: 'Voucher ID',  styles: { halign: 'left'  } },
-      { content: 'Montant en Euro', styles: { halign: 'right' } },
-    ]],
-    body: tableRows,
-    foot: [[
-      { content: '', colSpan: 2 },
-      { content: 'Montant total du virement', styles: { fontStyle: 'bold', halign: 'right' } },
-      { content: data.totalAmount, styles: { fontStyle: 'bold', halign: 'right' } },
-    ]],
-    headStyles: {
-      fillColor: AXA_BLUE,
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      fontSize: 8.5,
-    },
-    bodyStyles: {
-      fontSize: 8,
-      textColor: DARK,
-    },
-    footStyles: {
-      fillColor: [240, 242, 248],
-      textColor: DARK,
-      fontSize: 8.5,
-    },
-    alternateRowStyles: { fillColor: [250, 251, 255] },
-    columnStyles: {
-      0: { cellWidth: 38 },
-      1: { cellWidth: 38 },
-      2: { cellWidth: 38 },
-      3: { cellWidth: 'auto', halign: 'right' },
-    },
-    margin: { left: margin, right: margin },
-    tableLineColor: BORDER,
-    tableLineWidth: 0.2,
-  });
-
-  return doc;
+  const lines = [header, ...rows].map(r => r.map(csvEscape).join(CSV_SEP));
+  return '﻿' + lines.join('\r\n') + '\r\n';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -548,7 +373,6 @@ emailInput.addEventListener('input', () => {
   document.getElementById('f-date').textContent  = parsedData.paymentDate || '—';
   document.getElementById('f-total').textContent = parsedData.totalAmount  ? parsedData.totalAmount + ' €' : '—';
   document.getElementById('f-count').textContent = parsedData.invoices.length + ' facture(s)';
-  document.getElementById('warn-client').style.display = 'block';
 
   preview.classList.add('show');
   genBtn.disabled = false;
@@ -558,16 +382,25 @@ genBtn.addEventListener('click', () => {
   if (!parsedData) return;
 
   try {
-    const doc = generatePDF(parsedData);
-    const filename = `AXA_Reglement_${parsedData.paymentRef || 'export'}_${parsedData.paymentDate.replace(/\//g, '-')}.pdf`;
-    doc.save(filename);
+    const csv = generateCSV(parsedData);
+    const filename = `AXA_Virement_${parsedData.paymentRef || 'export'}_${parsedData.paymentDate.replace(/\//g, '-')}.csv`;
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 
     status.className = 'show success';
     status.innerHTML = `
       <svg viewBox="0 0 20 20" fill="currentColor">
         <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd"/>
       </svg>
-      <span>PDF généré avec succès — <strong>${filename}</strong></span>
+      <span>CSV généré avec succès — <strong>${filename}</strong></span>
     `;
   } catch (err) {
     status.className = 'show error';
