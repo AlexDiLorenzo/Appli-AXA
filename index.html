@@ -167,6 +167,40 @@
       color: var(--green-dark);
     }
 
+    /* ── Site breakdown ── */
+    .site-breakdown {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .site-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--green-dark);
+    }
+
+    .site-chip .count {
+      background: var(--green-dark);
+      color: #fff;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      padding: 1px 7px;
+    }
+
+    .site-chip.autres { color: #b08800; }
+    .site-chip.autres .count { background: var(--yellow); color: #4a3a00; }
+
     /* ── Button ── */
     #gen-btn {
       margin-top: 20px;
@@ -227,7 +261,7 @@
     </div>
     <p class="company">Montpellier Dépannage</p>
     <h1>AXA <span>→ CSV Virement</span></h1>
-    <p class="tagline">Collez le contenu du mail AXA, générez le CSV en un clic</p>
+    <p class="tagline">Collez le contenu du mail AXA, générez un CSV par site en un clic</p>
   </div>
 
   <div class="card">
@@ -242,6 +276,7 @@
         <div class="preview-field"><label>Montant total</label><span id="f-total">—</span></div>
         <div class="preview-field"><label>Nb de factures</label><span id="f-count">—</span></div>
       </div>
+      <div class="site-breakdown" id="site-breakdown"></div>
     </div>
 
     <button id="gen-btn" disabled>
@@ -249,7 +284,7 @@
         <path d="M12 10v6m0 0-3-3m3 3 3-3M3 15v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"/>
         <path d="M7 4h10l3 6H4L7 4Z"/>
       </svg>
-      Générer le CSV
+      Générer le(s) CSV
     </button>
 
     <div id="status"></div>
@@ -308,6 +343,35 @@ function parseAXAEmail(raw) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SITES
+// ─────────────────────────────────────────────────────────────────────────────
+// Le numéro de facture indique le site :
+//   FM… → Montpellier   |   FV… → Villetelle   |   FC… → Clermont-l'Hérault
+
+const SITE_LABELS = {
+  FM: 'Montpellier',
+  FV: 'Villetelle',
+  FC: "Clermont-l'Herault",
+  AUTRES: 'Autres',
+};
+
+function siteCodeOf(invoiceNumber) {
+  const m = String(invoiceNumber || '').trim().toUpperCase().match(/^(F[MVC])/);
+  return m ? m[1] : 'AUTRES';
+}
+
+// Regroupe les factures par site, en conservant l'ordre d'apparition des sites.
+function groupBySite(invoices) {
+  const groups = new Map();
+  for (const inv of invoices) {
+    const code = siteCodeOf(inv.votreFact);
+    if (!groups.has(code)) groups.set(code, []);
+    groups.get(code).push(inv);
+  }
+  return groups;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CSV GENERATOR
 // ─────────────────────────────────────────────────────────────────────────────
 // Format: French Excel — separator ';', decimal ',', UTF-8 with BOM.
@@ -324,13 +388,13 @@ function csvEscape(value) {
   return s;
 }
 
-function generateCSV(data) {
+function generateCSV(invoices, paymentDate) {
   const header = ['Numéro de facture', 'Référence UNIQUE de paiement', 'Date du paiement', 'Montant versé TTC'];
 
-  const rows = data.invoices.map(inv => [
+  const rows = invoices.map(inv => [
     inv.votreFact,
     inv.dossier,
-    data.paymentDate,
+    paymentDate,
     inv.montant,
   ]);
 
@@ -374,33 +438,59 @@ emailInput.addEventListener('input', () => {
   document.getElementById('f-total').textContent = parsedData.totalAmount  ? parsedData.totalAmount + ' €' : '—';
   document.getElementById('f-count').textContent = parsedData.invoices.length + ' facture(s)';
 
+  // Répartition par site
+  const groups = groupBySite(parsedData.invoices);
+  const breakdown = document.getElementById('site-breakdown');
+  breakdown.innerHTML = '';
+  for (const [code, invs] of groups) {
+    const chip = document.createElement('span');
+    chip.className = 'site-chip' + (code === 'AUTRES' ? ' autres' : '');
+    chip.innerHTML = `${SITE_LABELS[code]} <span class="count">${invs.length}</span>`;
+    breakdown.appendChild(chip);
+  }
+
   preview.classList.add('show');
   genBtn.disabled = false;
 });
 
-genBtn.addEventListener('click', () => {
+function downloadCSV(csv, filename) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+genBtn.addEventListener('click', async () => {
   if (!parsedData) return;
 
   try {
-    const csv = generateCSV(parsedData);
-    const filename = `AXA_Virement_${parsedData.paymentRef || 'export'}_${parsedData.paymentDate.replace(/\//g, '-')}.csv`;
+    const groups   = groupBySite(parsedData.invoices);
+    const dateStr  = parsedData.paymentDate.replace(/\//g, '-');
+    const refStr   = parsedData.paymentRef || 'export';
+    const fileList = [];
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    let n = 0;
+    for (const [code, invs] of groups) {
+      const csv      = generateCSV(invs, parsedData.paymentDate);
+      const filename = `AXA_Virement_${SITE_LABELS[code]}_${refStr}_${dateStr}.csv`;
+      // Petit délai entre chaque téléchargement pour éviter que le navigateur n'en bloque.
+      if (n > 0) await new Promise(r => setTimeout(r, 350));
+      downloadCSV(csv, filename);
+      fileList.push(`${SITE_LABELS[code]} (${invs.length})`);
+      n++;
+    }
 
     status.className = 'show success';
     status.innerHTML = `
       <svg viewBox="0 0 20 20" fill="currentColor">
         <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd"/>
       </svg>
-      <span>CSV généré avec succès — <strong>${filename}</strong></span>
+      <span>${fileList.length} CSV généré(s) — <strong>${fileList.join(' · ')}</strong></span>
     `;
   } catch (err) {
     status.className = 'show error';
