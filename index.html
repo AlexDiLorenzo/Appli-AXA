@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AXA → CSV Virement | Montpellier Dépannage</title>
+  <title>AXA → Excel Virement | Montpellier Dépannage</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -260,8 +260,8 @@
       <img src="logo.jpg" alt="Montpellier Dépannage" />
     </div>
     <p class="company">Montpellier Dépannage</p>
-    <h1>AXA <span>→ CSV Virement</span></h1>
-    <p class="tagline">Collez le contenu du mail AXA, générez un CSV par site en un clic</p>
+    <h1>AXA <span>→ Excel Virement</span></h1>
+    <p class="tagline">Collez le contenu du mail AXA, générez un fichier Excel par site en un clic</p>
   </div>
 
   <div class="card">
@@ -284,7 +284,7 @@
         <path d="M12 10v6m0 0-3-3m3 3 3-3M3 15v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"/>
         <path d="M7 4h10l3 6H4L7 4Z"/>
       </svg>
-      Générer le(s) CSV
+      Générer le(s) fichier(s) Excel
     </button>
 
     <div id="status"></div>
@@ -372,34 +372,142 @@ function groupBySite(invoices) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CSV GENERATOR
+// EXCEL (.xlsx) GENERATOR
 // ─────────────────────────────────────────────────────────────────────────────
-// Format: French Excel — separator ';', decimal ',', UTF-8 with BOM.
-// Columns match the AXA template "exemple_virement_generique" :
+// Génère un vrai fichier .xlsx (OOXML) — aucune librairie externe, 100 % local.
+// Un .xlsx est une archive ZIP de fichiers XML ; on construit les deux à la main
+// (ZIP « stored », sans compression).
+// Colonnes du modèle AXA "exemple_virement_generique" :
 //   Numéro de facture | Référence UNIQUE de paiement | Date du paiement | Montant versé TTC
 
-const CSV_SEP = ';';
+const HEADERS     = ['Numéro de facture', 'Référence UNIQUE de paiement', 'Date du paiement', 'Montant versé TTC'];
+const COL_LETTERS = ['A', 'B', 'C', 'D'];
+const XLSX_MIME   = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-function csvEscape(value) {
-  const s = String(value ?? '');
-  if (s.includes(CSV_SEP) || s.includes('"') || s.includes('\n') || s.includes('\r')) {
-    return '"' + s.replace(/"/g, '""') + '"';
-  }
-  return s;
+function xmlEscape(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
-function generateCSV(invoices, paymentDate) {
-  const header = ['Numéro de facture', 'Référence UNIQUE de paiement', 'Date du paiement', 'Montant versé TTC'];
+// — ZIP « stored » (CRC32 + structure) ———————————————————————————————————————
 
-  const rows = invoices.map(inv => [
-    inv.votreFact,
-    inv.dossier,
-    paymentDate,
-    inv.montant,
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function concatBytes(arrays) {
+  let total = 0;
+  for (const a of arrays) total += a.length;
+  const out = new Uint8Array(total);
+  let pos = 0;
+  for (const a of arrays) { out.set(a, pos); pos += a.length; }
+  return out;
+}
+
+function buildZip(files) {
+  const enc = new TextEncoder();
+  const u16 = n => { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n & 0xFFFF, true); return b; };
+  const u32 = n => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n >>> 0, true); return b; };
+
+  const local   = [];
+  const central = [];
+  let offset = 0;
+
+  for (const f of files) {
+    const nameBytes = enc.encode(f.name);
+    const data      = enc.encode(f.content);
+    const crc       = crc32(data);
+    const size      = data.length;
+
+    const lfh = concatBytes([
+      u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0),
+      u32(crc), u32(size), u32(size), u16(nameBytes.length), u16(0),
+      nameBytes, data,
+    ]);
+    local.push(lfh);
+
+    central.push(concatBytes([
+      u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0),
+      u32(crc), u32(size), u32(size), u16(nameBytes.length), u16(0), u16(0),
+      u16(0), u16(0), u32(0), u32(offset), nameBytes,
+    ]));
+
+    offset += lfh.length;
+  }
+
+  const centralStart = offset;
+  let centralSize = 0;
+  for (const c of central) centralSize += c.length;
+
+  const eocd = concatBytes([
+    u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length),
+    u32(centralSize), u32(centralStart), u16(0),
   ]);
 
-  const lines = [header, ...rows].map(r => r.map(csvEscape).join(CSV_SEP));
-  return '﻿' + lines.join('\r\n') + '\r\n';
+  return concatBytes([...local, ...central, eocd]);
+}
+
+// — Classeur Excel ———————————————————————————————————————————————————————————
+
+function sheetXML(invoices, paymentDate) {
+  const rowsData = [HEADERS, ...invoices.map(inv => [
+    inv.votreFact, inv.dossier, paymentDate, inv.montant,
+  ])];
+
+  const rows = rowsData.map((cells, r) => {
+    const rowNum  = r + 1;
+    const cellXML = cells.map((val, c) =>
+      `<c r="${COL_LETTERS[c]}${rowNum}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(val)}</t></is></c>`
+    ).join('');
+    return `<row r="${rowNum}">${cellXML}</row>`;
+  }).join('');
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+    `<sheetData>${rows}</sheetData></worksheet>`;
+}
+
+function generateXLSX(invoices, paymentDate) {
+  const files = [
+    { name: '[Content_Types].xml', content:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+      `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+      `<Default Extension="xml" ContentType="application/xml"/>` +
+      `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+      `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+      `</Types>` },
+    { name: '_rels/.rels', content:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+      `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
+      `</Relationships>` },
+    { name: 'xl/workbook.xml', content:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+      `<sheets><sheet name="Virement" sheetId="1" r:id="rId1"/></sheets></workbook>` },
+    { name: 'xl/_rels/workbook.xml.rels', content:
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+      `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
+      `</Relationships>` },
+    { name: 'xl/worksheets/sheet1.xml', content: sheetXML(invoices, paymentDate) },
+  ];
+  return buildZip(files);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -453,8 +561,8 @@ emailInput.addEventListener('input', () => {
   genBtn.disabled = false;
 });
 
-function downloadCSV(csv, filename) {
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+function downloadFile(bytes, filename, mime) {
+  const blob = new Blob([bytes], { type: mime });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href = url;
@@ -476,11 +584,11 @@ genBtn.addEventListener('click', async () => {
 
     let n = 0;
     for (const [code, invs] of groups) {
-      const csv      = generateCSV(invs, parsedData.paymentDate);
-      const filename = `AXA_Virement_${SITE_LABELS[code]}_${refStr}_${dateStr}.csv`;
+      const xlsx     = generateXLSX(invs, parsedData.paymentDate);
+      const filename = `AXA_Virement_${SITE_LABELS[code]}_${refStr}_${dateStr}.xlsx`;
       // Petit délai entre chaque téléchargement pour éviter que le navigateur n'en bloque.
       if (n > 0) await new Promise(r => setTimeout(r, 350));
-      downloadCSV(csv, filename);
+      downloadFile(xlsx, filename, XLSX_MIME);
       fileList.push(`${SITE_LABELS[code]} (${invs.length})`);
       n++;
     }
@@ -490,7 +598,7 @@ genBtn.addEventListener('click', async () => {
       <svg viewBox="0 0 20 20" fill="currentColor">
         <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd"/>
       </svg>
-      <span>${fileList.length} CSV généré(s) — <strong>${fileList.join(' · ')}</strong></span>
+      <span>${fileList.length} fichier(s) Excel généré(s) — <strong>${fileList.join(' · ')}</strong></span>
     `;
   } catch (err) {
     status.className = 'show error';
