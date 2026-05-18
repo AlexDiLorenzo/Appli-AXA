@@ -347,16 +347,19 @@ function parseAXAEmail(raw) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Le numéro de facture indique le site :
 //   FM… → Montpellier   |   FV… → Villetelle   |   FC… → Clermont-l'Hérault
+//   FP… → Pérols        |   FJ… → Agence A9
 
 const SITE_LABELS = {
   FM: 'Montpellier',
   FV: 'Villetelle',
   FC: "Clermont-l'Herault",
+  FP: 'Perols',
+  FJ: 'Agence A9',
   AUTRES: 'Autres',
 };
 
 function siteCodeOf(invoiceNumber) {
-  const m = String(invoiceNumber || '').trim().toUpperCase().match(/^(F[MVC])/);
+  const m = String(invoiceNumber || '').trim().toUpperCase().match(/^(F[MVCPJ])/);
   return m ? m[1] : 'AUTRES';
 }
 
