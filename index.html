@@ -345,9 +345,15 @@ function parseAXAEmail(raw) {
 // ─────────────────────────────────────────────────────────────────────────────
 // SITES
 // ─────────────────────────────────────────────────────────────────────────────
-// Le numéro de facture indique le site :
-//   FM… → Montpellier   |   FV… → Villetelle   |   FC… → Clermont-l'Hérault
-//   FP… → Pérols        |   FJ… → Agence A9
+// Le numéro de facture indique la société / l'agence :
+//   F + lettre → agence de Montpellier Dépannage
+//     FM Montpellier · FV Villetelle · FC Clermont-l'Hérault · FP Pérols · FJ Agence A9
+//   F + chiffres → Étoile Assistances  ou  Lunel Dépannage
+//     Lunel  = F{AAMM}{CHRONO} : commence par l'année (2 chiffres) + le mois d'émission
+//     Étoile = F{CHRONO}       : numéro purement séquentiel
+//   Comme on ne connaît pas la longueur des CHRONO, on distingue Lunel d'Étoile
+//   en comparant les 4 premiers chiffres à la date d'émission de la facture
+//   (colonne « date » du tableau AXA) : si ça correspond → Lunel, sinon → Étoile.
 
 const SITE_LABELS = {
   FM: 'Montpellier',
@@ -355,19 +361,38 @@ const SITE_LABELS = {
   FC: "Clermont-l'Herault",
   FP: 'Perols',
   FJ: 'Agence A9',
+  FETOILE: 'Etoile Assistances',
+  FLUNEL: 'Lunel Depannage',
   AUTRES: 'Autres',
 };
 
-function siteCodeOf(invoiceNumber) {
-  const m = String(invoiceNumber || '').trim().toUpperCase().match(/^(F[MVCPJ])/);
-  return m ? m[1] : 'AUTRES';
+function siteCodeOf(inv) {
+  const num = String(inv.votreFact || '').trim().toUpperCase();
+
+  // Agences Montpellier Dépannage : F suivi d'une lettre.
+  const letterMatch = num.match(/^(F[MVCPJ])/);
+  if (letterMatch) return letterMatch[1];
+
+  // F suivi uniquement de chiffres : Étoile Assistances ou Lunel Dépannage.
+  if (/^F\d+$/.test(num)) {
+    const digits = num.slice(1);
+    const d = String(inv.date || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    // Lunel : les 4 premiers chiffres = AAMM (année sur 2 chiffres + mois) de la
+    // date d'émission de la facture, suivis d'au moins un chiffre de chrono.
+    if (d && digits.length >= 5 && digits.slice(0, 4) === d[3].slice(2) + d[2]) {
+      return 'FLUNEL';
+    }
+    return 'FETOILE';
+  }
+
+  return 'AUTRES';
 }
 
-// Regroupe les factures par site, en conservant l'ordre d'apparition des sites.
+// Regroupe les factures par société/agence, en conservant l'ordre d'apparition.
 function groupBySite(invoices) {
   const groups = new Map();
   for (const inv of invoices) {
-    const code = siteCodeOf(inv.votreFact);
+    const code = siteCodeOf(inv);
     if (!groups.has(code)) groups.set(code, []);
     groups.get(code).push(inv);
   }
