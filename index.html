@@ -347,7 +347,7 @@ function parseAXAEmail(raw) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Le numéro de facture indique la société / l'agence :
 //   F + lettre → agence de Montpellier Dépannage
-//     FM Montpellier · FV Villetelle · FC Clermont-l'Hérault · FP Pérols · FJ Agence A9
+//     FM Montpellier · FV Villetelle · FC Clermont-l'Hérault · FP Pérols · FJ Agence A9 · FR Remoulins
 //   F + chiffres → Étoile Assistances  ou  Lunel Dépannage
 //     Lunel  = F{AAMM}{CHRONO} : commence par l'année (2 chiffres) + le mois d'émission
 //     Étoile = F{CHRONO}       : numéro purement séquentiel
@@ -361,6 +361,7 @@ const SITE_LABELS = {
   FC: "Clermont-l'Herault",
   FP: 'Perols',
   FJ: 'Agence A9',
+  FR: 'Remoulins',
   FETOILE: 'Etoile Assistances',
   FLUNEL: 'Lunel Depannage',
   AUTRES: 'Autres',
@@ -370,7 +371,7 @@ function siteCodeOf(inv) {
   const num = String(inv.votreFact || '').trim().toUpperCase();
 
   // Agences Montpellier Dépannage : F suivi d'une lettre.
-  const letterMatch = num.match(/^(F[MVCPJ])/);
+  const letterMatch = num.match(/^(F[MVCPJR])/);
   if (letterMatch) return letterMatch[1];
 
   // F suivi uniquement de chiffres : Étoile Assistances ou Lunel Dépannage.
