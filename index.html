@@ -346,45 +346,40 @@ function parseAXAEmail(raw) {
 // SITES
 // ─────────────────────────────────────────────────────────────────────────────
 // Le numéro de facture indique la société / l'agence :
-//   F + lettre → agence de Montpellier Dépannage
-//     FM Montpellier · FV Villetelle · FC Clermont-l'Hérault · FP Pérols · FJ Agence A9 · FR Remoulins
-//   F + chiffres → Étoile Assistances  ou  Lunel Dépannage
-//     Lunel  = F{AAMM}{CHRONO} : commence par l'année (2 chiffres) + le mois d'émission
-//     Étoile = F{CHRONO}       : numéro purement séquentiel
-//   Comme on ne connaît pas la longueur des CHRONO, on distingue Lunel d'Étoile
-//   en comparant les 4 premiers chiffres à la date d'émission de la facture
-//   (colonne « date » du tableau AXA) : si ça correspond → Lunel, sinon → Étoile.
+//   Montpellier Dépannage → F + lettre d'agence
+//     FM Montpellier · FP Pérols · FL Laroque · FR Fournes · FS St Georges
+//     FJ Agence A9 St Jean de Védas · FC Clermont-l'Hérault · FV Villetelle
+//   Étoile Assistances → FO (lettre O) ou F0 (zéro)
+//   Lunel Dépannage    → F + chiffres
+//   L'ordre des tests compte : FO/F0 est reconnu en premier, sinon un F0…
+//   serait avalé par la règle « F + chiffres » de Lunel.
 
 const SITE_LABELS = {
   FM: 'Montpellier',
-  FV: 'Villetelle',
-  FC: "Clermont-l'Herault",
   FP: 'Perols',
-  FJ: 'Agence A9',
-  FR: 'Remoulins',
-  FETOILE: 'Etoile Assistances',
-  FLUNEL: 'Lunel Depannage',
+  FL: 'Laroque',
+  FR: 'Fournes',
+  FS: 'St Georges',
+  FJ: 'Agence A9 St Jean de Vedas',
+  FC: "Clermont-l'Herault",
+  FV: 'Villetelle',
+  ETOILE: 'Etoile Assistances',
+  LUNEL: 'Lunel Depannage',
   AUTRES: 'Autres',
 };
 
 function siteCodeOf(inv) {
   const num = String(inv.votreFact || '').trim().toUpperCase();
 
-  // Agences Montpellier Dépannage : F suivi d'une lettre.
-  const letterMatch = num.match(/^(F[MVCPJR])/);
+  // Étoile Assistances : FO (lettre O) ou F0 (zéro). À tester avant Lunel.
+  if (/^F[O0]/.test(num)) return 'ETOILE';
+
+  // Agences Montpellier Dépannage : F suivi de la lettre d'agence.
+  const letterMatch = num.match(/^(F[MPLRSJCV])/);
   if (letterMatch) return letterMatch[1];
 
-  // F suivi uniquement de chiffres : Étoile Assistances ou Lunel Dépannage.
-  if (/^F\d+$/.test(num)) {
-    const digits = num.slice(1);
-    const d = String(inv.date || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    // Lunel : les 4 premiers chiffres = AAMM (année sur 2 chiffres + mois) de la
-    // date d'émission de la facture, suivis d'au moins un chiffre de chrono.
-    if (d && digits.length >= 5 && digits.slice(0, 4) === d[3].slice(2) + d[2]) {
-      return 'FLUNEL';
-    }
-    return 'FETOILE';
-  }
+  // Lunel Dépannage : F suivi uniquement de chiffres.
+  if (/^F\d+$/.test(num)) return 'LUNEL';
 
   return 'AUTRES';
 }
